@@ -33,8 +33,8 @@ app.use(
   })
 );
 
-// ✅ Preflight (OPTIONS) istekleri için
-app.options('*', cors());
+// ✅ Preflight (OPTIONS) istekleri için — Express 5 uyumlu regex
+app.options(/(.*)/, cors());
 
 // Middleware
 app.use(express.json());
