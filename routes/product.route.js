@@ -1,13 +1,15 @@
 import express from 'express'
-import Product from '../models/hepsiburada.js'
 const router = express.Router();
-import {getAllProducts, getProductById,createProduct,updateProduct , deleteProduct, searchProducts} from '../controllers/productController.js'
+import { getAllProducts, getProductById, createProduct, updateProduct, deleteProduct, searchProducts } from '../controllers/productController.js'
+import { protect } from '../middleware/authMiddleware.js'
+import { validate } from '../middleware/validate.js'
+import { createProductValidator, updateProductValidator, searchProductsValidator, productIdParamValidator } from '../validators/productValidator.js'
 
-router.get('/search', searchProducts); // 🔍 Arama route'u (/:id'den önce olmalı)
+router.get('/search', searchProductsValidator, validate, searchProducts);
 router.get('/', getAllProducts);
-router.get('/:id', getProductById);
-router.post('/',createProduct);
-router.put('/:id', updateProduct);
-router.delete('/:id',deleteProduct);
+router.get('/:id', productIdParamValidator, validate, getProductById);
+router.post('/', protect, createProductValidator, validate, createProduct);
+router.put('/:id', protect, updateProductValidator, validate, updateProduct);
+router.delete('/:id', protect, productIdParamValidator, validate, deleteProduct);
 
 export default router;

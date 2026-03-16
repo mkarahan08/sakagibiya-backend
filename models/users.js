@@ -15,7 +15,12 @@ const userSchema = new mongoose.Schema({
     password: {
         type: String,
         required: true,
-    }
+    },
+    gender: {
+        type: String,
+        enum: ["erkek", "kadin", "belirtmek_istemiyorum"],
+        default: "belirtmek_istemiyorum",
+    },
 });
 // Şifre karşılaştırma metodu
 userSchema.methods.matchPassword = async function (password) {

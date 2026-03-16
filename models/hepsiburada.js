@@ -37,10 +37,30 @@ const productSchema = new mongoose.Schema({
         type: String,
         required: true
     },
-},   
-{timestamps: true}
-);    
+    discount: {
+        type: Number,
+        required: false
+    },
+    is_active: {
+        type: Boolean,
+        required: false,
+        default: true
+    },
+    last_updated: {
+        type: Date,
+        required: false
+    },
+    price_history: {
+        type: [{
+            price: String,
+            date: Date
+        }],
+        required: false
+    }
+},
+{ timestamps: true }
+);
 
-const Product = mongoose.model('Product', productSchema ,'hepsiburada');
+const Product = mongoose.model('Product', productSchema, 'hepsiburada');
 
  export default Product;

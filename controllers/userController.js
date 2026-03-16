@@ -8,9 +8,9 @@ const generateToken = (id) => {
 };
 
 // REGISTER
-export const registerUser = async (req, res) => {
+export const registerUser = async (req, res, next) => {
     try {
-        const { name, email, password } = req.body;
+        const { name, email, password, gender } = req.body;
 
         const userExists = await User.findOne({ email });
         if (userExists) {
@@ -19,27 +19,32 @@ export const registerUser = async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        const user = await User.create({ name, email, password: hashedPassword });
-        
+        const userData = { name, email, password: hashedPassword };
+        if (gender && ["erkek", "kadin", "belirtmek_istemiyorum"].includes(gender)) {
+            userData.gender = gender;
+        }
+        const user = await User.create(userData);
+
         if (user) {
             res.status(201).json({
                 success: true,
                 message: 'Kayıt başarılı',
                 data: {
+                    _id: user._id,
                     name: user.name,
                     email: user.email,
+                    gender: user.gender,
                     token: generateToken(user._id)
                 }
             });
         }
-        
     } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+        next(error);
     }
 };
 
 // LOGIN
-export const loginUser = async (req, res) => {
+export const loginUser = async (req, res, next) => {
     try {
         const { email, password } = req.body;
         if (!email || !password) {
@@ -73,19 +78,17 @@ export const loginUser = async (req, res) => {
                 _id: user._id,
                 name: user.name,
                 email: user.email,
+                gender: user.gender,
                 token: generateToken(user._id),
             }
         });
 
     } catch (error) {
-        res.status(500).json({ 
-            success: false,
-            message: error.message 
-        });
+        next(error);
     }
 };
 
-export const getUserProfile = async (req, res) => {
+export const getUserProfile = async (req, res, next) => {
     try {
         const user = await User.findById(req.user._id).select('-password');
 
@@ -101,12 +104,7 @@ export const getUserProfile = async (req, res) => {
             data: user
         });
     } catch (error) {
-        console.error('Profil bilgisi getirme hatası:', error);
-        return res.status(500).json({
-            success: false,
-            message: 'Profil bilgileri getirilirken bir hata oluştu',
-            error: error.message
-        });
+        next(error);
     }
 };
 
