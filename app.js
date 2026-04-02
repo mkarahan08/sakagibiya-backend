@@ -52,12 +52,18 @@ app.get('/', (req, res) => {
     res.send('Hello World API Server');
 });
 
-const PORT = process.env.PORT || 5000;
+// Lokal geliştirme için sunucuyu başlat; Vercel serverless ortamında listen gerekmez
+if (process.env.NODE_ENV !== 'production') {
+    const PORT = process.env.PORT || 5000;
+    connectDB().then(() => {
+        app.listen(PORT, '0.0.0.0', () => {
+            console.log(`Server is running on port ${PORT}`);
+        });
+    });
+} else {
+    connectDB();
+}
 
-connectDB().then(() => {
-    app.listen(PORT, '0.0.0.0', () => {
-        console.log(`Server is running on port ${PORT}`);
-    });
-    });
+export default app;
 
   
