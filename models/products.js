@@ -14,11 +14,11 @@ const productSchema = new mongoose.Schema({
         required: true
     },
     original_price: {
-        type: String,
+        type: Number,
         required: true
     },
     final_price: {
-        type: String,
+        type: Number,
         required: false
     },
     image: {
@@ -46,7 +46,7 @@ const productSchema = new mongoose.Schema({
         required: false
     },
     price_history: [{
-        price: { type: String, required: false },
+        price: { type: Number, required: false },
         date: { type: Date, required: false }
     }],
     is_active: {

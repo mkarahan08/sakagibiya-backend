@@ -27,6 +27,20 @@ const expandSynonyms = (term) => {
     return SYNONYMS[lower] || [term];
 };
 
+/** Sadece kategori filtresi (filterMeta / aralık hesabı için; platform-satıcı-fiyat-indirim yok) */
+const categoryOnlyMatch = (category) => {
+    const q = {};
+    if (category && category.trim() !== '') {
+        const categoryName = category.trim();
+        if (categoryName === 'Moda') {
+            q.category = { $in: ['Erkek Moda', 'Kadin Moda'] };
+        } else {
+            q.category = categoryName;
+        }
+    }
+    return q;
+};
+
 export const getAllProducts = async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
@@ -63,8 +77,8 @@ export const getAllProducts = async (req, res) => {
         const maxPrice = parseFloat(req.query.maxPrice);
         if (!isNaN(minPrice) || !isNaN(maxPrice)) {
             query.final_price = {};
-            if (!isNaN(minPrice)) query.final_price.$gte = String(minPrice);
-            if (!isNaN(maxPrice)) query.final_price.$lte = String(maxPrice);
+            if (!isNaN(minPrice)) query.final_price.$gte = minPrice;
+            if (!isNaN(maxPrice)) query.final_price.$lte = maxPrice;
         }
 
         // İndirim oranı filtresi
@@ -84,6 +98,9 @@ export const getAllProducts = async (req, res) => {
         else if (sort === 'discount')   sortOption = { discount: -1 };
         else if (sort === 'newest')     sortOption = { createdAt: -1 };
 
+        const categoryForMeta = req.query.category;
+        const metaMatch = categoryOnlyMatch(categoryForMeta);
+
         const total = await Product.countDocuments(query);
         const totalPages = Math.ceil(total / limit);
 
@@ -92,17 +109,63 @@ export const getAllProducts = async (req, res) => {
             .limit(limit)
             .sort(sortOption);
 
-        res.status(200).json({
-            products,
-            pagination: {
-                currentPage: page,
-                totalPages,
-                totalItems: total,
-                itemsPerPage: limit,
-                hasNextPage: page < totalPages,
-                hasPrevPage: page > 1
+        const pagination = {
+            currentPage: page,
+            totalPages,
+            totalItems: total,
+            itemsPerPage: limit,
+            hasNextPage: page < totalPages,
+            hasPrevPage: page > 1
+        };
+
+        const body = { products, pagination };
+
+        if (page === 1) {
+            const metaAgg = await Product.aggregate([
+                { $match: metaMatch },
+                {
+                    $group: {
+                        _id: null,
+                        minPrice: { $min: '$final_price' },
+                        maxPrice: { $max: '$final_price' },
+                        minDiscount: { $min: { $ifNull: ['$discount', 0] } },
+                        maxDiscount: { $max: { $ifNull: ['$discount', 0] } },
+                        sites: { $addToSet: '$satici' }
+                    }
+                }
+            ]);
+            const row = metaAgg[0];
+            const filterMeta = {
+                minPrice: 0,
+                maxPrice: 1000,
+                minDiscount: 0,
+                maxDiscount: 100,
+                sites: []
+            };
+            if (row) {
+                const minP = Number(row.minPrice);
+                const maxP = Number(row.maxPrice);
+                filterMeta.minPrice = Number.isFinite(minP) ? minP : 0;
+                filterMeta.maxPrice = Number.isFinite(maxP) ? maxP : filterMeta.minPrice;
+                if (filterMeta.maxPrice < filterMeta.minPrice) filterMeta.maxPrice = filterMeta.minPrice;
+
+                const minD = Number(row.minDiscount);
+                const maxD = Number(row.maxDiscount);
+                filterMeta.minDiscount = Number.isFinite(minD) ? minD : 0;
+                filterMeta.maxDiscount = Number.isFinite(maxD) ? maxD : 100;
+                if (filterMeta.maxDiscount < filterMeta.minDiscount) filterMeta.maxDiscount = filterMeta.minDiscount;
+                if (filterMeta.maxDiscount === filterMeta.minDiscount && filterMeta.minDiscount === 0) {
+                    filterMeta.maxDiscount = 100;
+                }
+
+                filterMeta.sites = [...new Set((row.sites || []).filter(Boolean))].sort((a, b) =>
+                    String(a).localeCompare(String(b), 'tr')
+                );
             }
-        });
+            body.filterMeta = filterMeta;
+        }
+
+        res.status(200).json(body);
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -221,8 +284,8 @@ export const searchProducts = async (req, res) => {
         }
         if (!isNaN(minPrice) || !isNaN(maxPrice)) {
             searchQuery.final_price = {};
-            if (!isNaN(minPrice)) searchQuery.final_price.$gte = String(minPrice);
-            if (!isNaN(maxPrice)) searchQuery.final_price.$lte = String(maxPrice);
+            if (!isNaN(minPrice)) searchQuery.final_price.$gte = minPrice;
+            if (!isNaN(maxPrice)) searchQuery.final_price.$lte = maxPrice;
         }
         if (!isNaN(minDiscount) || !isNaN(maxDiscount)) {
             searchQuery.discount = {};
