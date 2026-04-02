@@ -22,6 +22,7 @@ const favoriteSchema = new mongoose.Schema({
     image: String,
     url: String,
     final_price: String,
+    platform: String,
     original_price: String,
     createdAt: Date,
   }

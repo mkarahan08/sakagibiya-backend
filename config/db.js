@@ -14,17 +14,19 @@ dotenv.config();
   */
 
 
-const connectDB = async () => {
-  const uri = process.env.MONGODB_URI;
-  if (!uri) {
-    throw new Error('MONGODB_URI tanımlı değil');
-  }
-  const dbName = uri.includes('/?') || uri.endsWith('/')
-    ? uri.replace(/\/?$/, '/hepsidb')
-    : uri;
-
-  await mongoose.connect(dbName);
-};
-
+ const connectDB = async () => {
+    try {
+        const uri = process.env.MONGODB_URI;
+        // Eğer URI'de veritabanı adı yoksa, hepsidb ekle
+        const dbName = uri.includes('/?') || uri.endsWith('/') 
+            ? uri.replace(/\/?$/, '/sakagibidb') 
+            : uri;
+        
+        await mongoose.connect(dbName);
+        console.log('Connected to MongoDB - Database: sakagibidb');
+    } catch (error) {
+        console.error('Error connecting to MongoDB:', error);
+    }
+}
 export default connectDB;
  

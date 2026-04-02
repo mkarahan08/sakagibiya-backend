@@ -1,8 +1,8 @@
 import Favorite from "../models/favorites.js";
-import Product from "../models/hepsiburada.js";
+import Product from "../models/products.js";
 
 // Favorilere ekle
-export const addToFavorites = async (req, res, next) => {
+export const addToFavorites = async (req, res) => {
   try {
     const { productId } = req.body;
     const userId = req.user._id;
@@ -64,12 +64,16 @@ export const addToFavorites = async (req, res, next) => {
     });
 
   } catch (error) {
-    next(error);
+    console.error("Favori ekleme hatası:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
   }
 };
 
 // Favorilerden çıkar
-export const removeFromFavorites = async (req, res, next) => {
+export const removeFromFavorites = async (req, res) => {
   try {
     const { productId } = req.params;
     const userId = req.user._id;
@@ -92,12 +96,16 @@ export const removeFromFavorites = async (req, res, next) => {
     });
 
   } catch (error) {
-    next(error);
+    console.error("Favori çıkarma hatası:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
   }
 };
 
 // Kullanıcının tüm favorilerini getir
-export const getUserFavorites = async (req, res, next) => {
+export const getUserFavorites = async (req, res) => {
   try {
     const userId = req.user._id;
 
@@ -126,12 +134,16 @@ export const getUserFavorites = async (req, res, next) => {
     });
 
   } catch (error) {
-    next(error);
+    console.error("Favoriler getirme hatası:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
   }
 };
 
 // Favori durumunu kontrol et (toggle)
-export const toggleFavorite = async (req, res, next) => {
+export const toggleFavorite = async (req, res) => {
   try {
     const { productId } = req.body;
     const userId = req.user._id;
@@ -200,12 +212,16 @@ export const toggleFavorite = async (req, res, next) => {
     }
 
   } catch (error) {
-    next(error);
+    console.error("Favori toggle hatası:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
   }
 };
 
 // Ürünün favori durumunu kontrol et
-export const checkFavoriteStatus = async (req, res, next) => {
+export const checkFavoriteStatus = async (req, res) => {
   try {
     const { productId } = req.params;
     const userId = req.user._id;
@@ -221,7 +237,11 @@ export const checkFavoriteStatus = async (req, res, next) => {
     });
 
   } catch (error) {
-    next(error);
+    console.error("Favori durum kontrolü hatası:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
   }
 };
 

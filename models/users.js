@@ -18,8 +18,8 @@ const userSchema = new mongoose.Schema({
     },
     gender: {
         type: String,
-        enum: ["erkek", "kadin", "belirtmek_istemiyorum"],
-        default: "belirtmek_istemiyorum",
+        enum: ["erkek", "kadin", "belirtmek_istemiyorum", ""],
+        default: "",
     },
 });
 // Şifre karşılaştırma metodu
