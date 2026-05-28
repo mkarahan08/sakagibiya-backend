@@ -1,4 +1,5 @@
 import productRoutes from './routes/product.route.js'
+import { getPlatformSellers } from './controllers/productController.js'
 import userRoutes from "./routes/user.route.js"
 import favoriteRoutes from "./routes/favorite.route.js"
 import dotenv from 'dotenv';
@@ -43,7 +44,8 @@ app.use(express.urlencoded({ extended: true }));
 // ✅ Sunucu sağlık kontrolü endpoint'i
 app.get('/health', (req, res) => res.status(200).send('ok'));
 
-//routes
+// Platforma göre satıcı listesi — router’daki /:id ile çakışmaması için mount’tan önce
+app.get('/api/products/platform-sellers', getPlatformSellers);
 app.use('/api/products', productRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/favorites", favoriteRoutes);

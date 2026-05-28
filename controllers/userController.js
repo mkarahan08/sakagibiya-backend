@@ -31,6 +31,9 @@ export const registerUser = async (req, res) => {
             email,
             password: hashedPassword,
             gender: allowedGender(gender),
+            // Faz 3 — Yasal: Validator zaten acceptedTerms === true zorunluluğunu
+            // sağladığı için burada sadece kabul tarihini damgalıyoruz.
+            acceptedTermsAt: new Date(),
         });
         
         if (user) {

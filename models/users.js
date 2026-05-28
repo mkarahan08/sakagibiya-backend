@@ -21,6 +21,12 @@ const userSchema = new mongoose.Schema({
         enum: ["erkek", "kadin", "belirtmek_istemiyorum", ""],
         default: "",
     },
+    // Faz 3 — Yasal: Kullanıcının kayıt sırasında "Kullanım Koşulları"nı
+    // kabul ettiği zaman damgası. Eski kullanıcılarda null kalır.
+    acceptedTermsAt: {
+        type: Date,
+        default: null,
+    },
 });
 // Şifre karşılaştırma metodu
 userSchema.methods.matchPassword = async function (password) {

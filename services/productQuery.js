@@ -68,7 +68,7 @@ export function parseSearchParams(reqQuery = {}) {
 }
 
 export function buildListMatch({ category, satici, minDiscount, maxDiscount }) {
-  const match = {};
+  const match = { is_active: true };
   if (category) {
     if (category === "Moda") {
       match.category = { $in: ["Erkek Moda", "Kadin Moda"] };
@@ -77,7 +77,7 @@ export function buildListMatch({ category, satici, minDiscount, maxDiscount }) {
     }
   }
   if (satici) {
-    match.satici = { $regex: satici, $options: "i" };
+    match.satici = { $regex: new RegExp(`^${escapeRegex(satici)}$`, "i") };
   }
   if (minDiscount != null || maxDiscount != null) {
     match.discount = {};
@@ -90,6 +90,7 @@ export function buildListMatch({ category, satici, minDiscount, maxDiscount }) {
 export function buildSearchMatch(searchTerm, { satici, minDiscount, maxDiscount }) {
   const term = escapeRegex(searchTerm);
   const match = {
+    is_active: true,
     $or: [
       { name: { $regex: term, $options: "i" } },
       { brand: { $regex: term, $options: "i" } },
@@ -98,7 +99,7 @@ export function buildSearchMatch(searchTerm, { satici, minDiscount, maxDiscount 
     ]
   };
   if (satici) {
-    match.satici = { $regex: satici, $options: "i" };
+    match.satici = { $regex: new RegExp(`^${escapeRegex(satici)}$`, "i") };
   }
   if (minDiscount != null || maxDiscount != null) {
     match.discount = {};

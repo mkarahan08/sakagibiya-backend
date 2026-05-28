@@ -3,6 +3,33 @@ import Product from '../models/products.js';
 // Kullanici girdisindeki regex ozel karakterlerini kacir (injection koruması)
 const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+/**
+ * UI’da seçilen platform → MongoDB’deki yazım farkları (Amazon / Amazon.com.tr, Hepsi Burada vb.)
+ */
+function platformMongoRegex(platformInput) {
+    const raw = String(platformInput || '').trim();
+    if (!raw) return /^$/; // bos eslesmesin
+    const norm = raw.toLowerCase().normalize('NFKC').replace(/\s+/g, ' ').trim();
+    if (norm === 'trendyol') return /^\s*trendyol\s*$/i;
+    if (norm === 'hepsiburada' || norm === 'hepsi burada') {
+        return /^\s*(hepsiburada|hepsi\s*burada)\s*$/i;
+    }
+    if (norm === 'amazon') {
+        return /^\s*amazon(\.com(\.tr)?)?\s*$/i;
+    }
+    if (norm === 'n11') {
+        return /^\s*n11(\.com)?\s*$/i;
+    }
+    return new RegExp(`^\\s*${escapeRegex(raw)}\\s*$`, 'i');
+}
+
+/** Satıcı tam eşleşme + baş/son boşluk toleransı */
+function saticiExactMongoRegex(saticiInput) {
+    const t = String(saticiInput || '').trim();
+    if (!t) return /^$/;
+    return new RegExp(`^\\s*${escapeRegex(t)}\\s*$`, 'i');
+}
+
 // Turkce es-anlamlilar haritasi (kucuk harf, genisletilebilir)
 const SYNONYMS = {
     'pabuç':        ['ayakkabı', 'pabuç', 'bot', 'sandalet'],
@@ -29,7 +56,7 @@ const expandSynonyms = (term) => {
 
 /** Sadece kategori filtresi (filterMeta / aralık hesabı için; platform-satıcı-fiyat-indirim yok) */
 const categoryOnlyMatch = (category) => {
-    const q = {};
+    const q = { is_active: true };
     if (category && category.trim() !== '') {
         const categoryName = category.trim();
         if (categoryName === 'Moda') {
@@ -41,6 +68,61 @@ const categoryOnlyMatch = (category) => {
     return q;
 };
 
+/**
+ * Filtre paneli: platform seçilince satıcı listesi.
+ * MongoDB’de SQL’deki "SELECT DISTINCT satici FROM products WHERE platform = ?" karşılığı: distinct('satici', filter).
+ */
+export const getPlatformSellers = async (req, res) => {
+    try {
+        const platform = req.query.platform;
+        if (!platform || String(platform).trim() === '') {
+            return res.status(400).json({ message: 'platform parametresi gerekli', sites: [] });
+        }
+
+        const p = String(platform).trim();
+        let match = {
+            is_active: true,
+            platform: { $regex: platformMongoRegex(p) },
+        };
+
+        const categoryParam = req.query.category;
+        if (categoryParam && String(categoryParam).trim() !== '') {
+            const categoryName = String(categoryParam).trim();
+            if (categoryName === 'Moda') {
+                match.category = { $in: ['Erkek Moda', 'Kadin Moda'] };
+            } else {
+                match.category = categoryName;
+            }
+        }
+
+        let raw = await Product.distinct('satici', match);
+
+        if (raw.filter(Boolean).length === 0) {
+            match = {
+                is_active: true,
+                platform: { $regex: escapeRegex(p), $options: 'i' },
+            };
+            if (categoryParam && String(categoryParam).trim() !== '') {
+                const categoryName = String(categoryParam).trim();
+                if (categoryName === 'Moda') {
+                    match.category = { $in: ['Erkek Moda', 'Kadin Moda'] };
+                } else {
+                    match.category = categoryName;
+                }
+            }
+            raw = await Product.distinct('satici', match);
+        }
+
+        const sites = raw.filter(Boolean).sort((a, b) =>
+            String(a).localeCompare(String(b), 'tr')
+        );
+
+        res.status(200).json({ sites });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+};
+
 export const getAllProducts = async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
@@ -48,8 +130,8 @@ export const getAllProducts = async (req, res) => {
         const skip = (page - 1) * limit;
         const category = req.query.category; // Kategori filtresi
 
-        // Kategori filtresi varsa ekle
-        const query = {};
+        // Kategori filtresi varsa ekle. Sadece aktif urunler gosterilsin.
+        const query = { is_active: true };
         if (category && category.trim() !== '') {
             const categoryName = category.trim();
             // Eğer "Moda" kategorisi seçildiyse, hem "Erkek Moda" hem "Kadın Moda" ürünlerini getir
@@ -63,13 +145,13 @@ export const getAllProducts = async (req, res) => {
         // Platform filtresi — büyük/küçük harf farkı gözetmeksizin eşleştir
         const platform = req.query.platform;
         if (platform && platform.trim() !== '') {
-            query.platform = { $regex: new RegExp(`^${escapeRegex(platform.trim())}$`, 'i') };
+            query.platform = { $regex: platformMongoRegex(platform.trim()) };
         }
 
-        // Satıcı filtresi
+        // Satıcı filtresi — tam isim (b/h yok); baş/son boşluk DB kaynaklı farklara izin ver
         const satici = req.query.satici;
         if (satici && satici.trim() !== '') {
-            query.satici = { $regex: escapeRegex(satici.trim()), $options: 'i' };
+            query.satici = { $regex: saticiExactMongoRegex(satici.trim()) };
         }
 
         // Fiyat aralığı filtresi
@@ -174,7 +256,11 @@ export const getAllProducts = async (req, res) => {
 
 export const getProductById = async (req, res) => {
     try {
-        const product = await Product.findById(req.params.id);
+        // Pasif urunler tek tek erisimde de gosterilmesin (URL ile direkt gelinse bile).
+        const product = await Product.findOne({ _id: req.params.id, is_active: true });
+        if (!product) {
+            return res.status(404).json({ message: 'Product not found' });
+        }
         res.status(200).json(product);
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -253,7 +339,8 @@ export const searchProducts = async (req, res) => {
             )
         }));
 
-        const searchQuery = { $and: tokenConditions };
+        // Sadece aktif urunler aramada gozuksun.
+        const searchQuery = { is_active: true, $and: tokenConditions };
 
         // --- Kategori filtresi ---
         const categoryParam = req.query.category;
@@ -269,7 +356,7 @@ export const searchProducts = async (req, res) => {
         // --- Platform filtresi — büyük/küçük harf farkı gözetmeksizin eşleştir ---
         const platformParam = req.query.platform;
         if (platformParam && platformParam.trim() !== '') {
-            searchQuery.platform = { $regex: new RegExp(`^${escapeRegex(platformParam.trim())}$`, 'i') };
+            searchQuery.platform = { $regex: platformMongoRegex(platformParam.trim()) };
         }
 
         // --- Filtreler (frontend'den gelen parametreler) ---
@@ -280,7 +367,7 @@ export const searchProducts = async (req, res) => {
         const maxDiscount = parseFloat(req.query.maxDiscount);
 
         if (satici && satici.trim() !== '') {
-            searchQuery.satici = { $regex: escapeRegex(satici.trim()), $options: 'i' };
+            searchQuery.satici = { $regex: saticiExactMongoRegex(satici.trim()) };
         }
         if (!isNaN(minPrice) || !isNaN(maxPrice)) {
             searchQuery.final_price = {};
@@ -360,3 +447,123 @@ export const searchProducts = async (req, res) => {
         });
     }
 }
+
+/**
+ * GET /api/products/:id/similar?limit=12
+ * Content-based "benzer urunler" oneri.
+ *
+ * Strateji:
+ *   1. Source urunu bul (aktif, _id ile).
+ *   2. Aday havuzu: ayni kategori, aktif, source disinda.
+ *   3. Skorla: marka eslesmesi +30, ayni platform DEGIL +10,
+ *      fiyat yakinligi 0..40 (mutlak fark / source price).
+ *   4. Top-N dondur. Esit skorlar arasinda yeni guncellenen onde.
+ *
+ * Notlar:
+ *   - aggregation pipeline kullaniyoruz cunku final_price string olabiliyor;
+ *     priceSortField yardimcisi yok bu controller'da, manual parsePrice yapacagiz.
+ *   - source urun bulunamazsa 404.
+ */
+export const getSimilarProducts = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 12));
+
+    const source = await Product.findOne({ _id: id, is_active: true });
+    if (!source) {
+      return res.status(404).json({ success: false, message: 'Urun bulunamadi' });
+    }
+
+    // final_price'i sayisal cikar (parsePrice mantigi)
+    const parsePrice = (val) => {
+      if (val == null) return null;
+      if (typeof val === 'number') return val;
+      const cleaned = String(val).replace(' TL', '').replace(/\./g, '').replace(',', '.');
+      const n = Number(cleaned);
+      return Number.isFinite(n) ? n : null;
+    };
+
+    const sourcePrice = parsePrice(source.final_price);
+
+    // Aday havuzu: ayni kategori, aktif, source disinda
+    const candidates = await Product.find({
+      category: source.category,
+      is_active: true,
+      _id: { $ne: source._id },
+    })
+      .limit(200) // skor icin yeterli havuz, ama DB'yi yormasin
+      .lean();
+
+    // Skorla
+    const sourceBrand = (source.brand || '').toLowerCase().trim();
+    const sourcePlatform = (source.platform || '').toLowerCase().trim();
+
+    const scored = candidates.map((p) => {
+      let score = 0;
+
+      // Marka eslesmesi: +30
+      const pBrand = (p.brand || '').toLowerCase().trim();
+      if (sourceBrand && pBrand && sourceBrand === pBrand) score += 30;
+
+      // Farkli platform bonusu (cesitlilik): +10
+      const pPlatform = (p.platform || '').toLowerCase().trim();
+      if (sourcePlatform && pPlatform && sourcePlatform !== pPlatform) score += 10;
+
+      // Fiyat yakinligi: maks 40 puan
+      // Yakin fiyat = sourcePrice +/- %30 araliginda; cok uzaksa puan azalir
+      if (sourcePrice && sourcePrice > 0) {
+        const candidatePrice = parsePrice(p.final_price);
+        if (candidatePrice && candidatePrice > 0) {
+          const diff = Math.abs(candidatePrice - sourcePrice);
+          const ratio = diff / sourcePrice;
+          // ratio 0 -> 40 puan, ratio 1+ -> 0 puan, lineer azalma
+          const priceScore = Math.max(0, 40 * (1 - ratio));
+          score += priceScore;
+        }
+      }
+
+      // Discount bonusu: indirimli urunler hafif onde olsun
+      if (typeof p.discount === 'number' && p.discount > 0) {
+        score += Math.min(10, p.discount / 10); // %100 indirim = +10
+      }
+
+      return { ...p, _score: score };
+    });
+
+    // Sirala: skor desc, esit ise last_updated desc
+    scored.sort((a, b) => {
+      if (b._score !== a._score) return b._score - a._score;
+      const da = new Date(a.last_updated || a.updatedAt || 0).getTime();
+      const db = new Date(b.last_updated || b.updatedAt || 0).getTime();
+      return db - da;
+    });
+
+    // Cesitlilik: ayni platform pespese gelmesin (basit round-robin)
+    const top = scored.slice(0, limit * 3);
+    const result = [];
+    let lastPlatform = null;
+    for (const p of top) {
+      if (result.length >= limit) break;
+      if (p.platform === lastPlatform && top.some((q) => !result.includes(q) && q.platform !== lastPlatform)) {
+        // Skip simdilik, sonraki turda dene
+        continue;
+      }
+      result.push(p);
+      lastPlatform = p.platform;
+    }
+    // Yetersiz kaldiysa kalan slotlari skor sirasiyla doldur
+    if (result.length < limit) {
+      for (const p of top) {
+        if (result.length >= limit) break;
+        if (!result.includes(p)) result.push(p);
+      }
+    }
+
+    // Yanit: _score'u temizle
+    const products = result.slice(0, limit).map(({ _score, ...rest }) => rest);
+
+    res.status(200).json({ success: true, products });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
